@@ -22,7 +22,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,7 +51,20 @@ const osThreadAttr_t defaultTask_attributes = {
   .priority = (osPriority_t) osPriorityNormal,
 };
 /* USER CODE BEGIN PV */
-
+osThreadId_t giveTaskHandle;
+const osThreadAttr_t giveTask_attributes = {
+  .name = "giveTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityNormal,
+};
+osThreadId_t takeTaskHandle;
+const osThreadAttr_t takeTask_attributes = {
+  .name = "takeTask",
+  .stack_size = 128 * 4,
+  .priority = (osPriority_t) osPriorityAboveNormal,
+};
+osSemaphoreId_t binSemHandle;
+osSemaphoreId_t countSemHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -61,12 +74,16 @@ static void MX_USART1_UART_Init(void);
 void StartDefaultTask(void *argument);
 
 /* USER CODE BEGIN PFP */
-
+void StartGiveTask(void *argument);
+void StartTakeTask(void *argument);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
+static void uart_print(const char *msg)
+{
+  HAL_UART_Transmit(&huart1, (uint8_t *)msg, strlen(msg), HAL_MAX_DELAY);
+}
 /* USER CODE END 0 */
 
 /**
@@ -111,7 +128,8 @@ int main(void)
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
-  /* add semaphores, ... */
+  binSemHandle = osSemaphoreNew(1, 0, NULL);     /* binary semaphore, ban dau = 0 */
+  countSemHandle = osSemaphoreNew(3, 3, NULL);   /* counting semaphore, 3 cho trong */
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
@@ -127,7 +145,8 @@ int main(void)
   defaultTaskHandle = osThreadNew(StartDefaultTask, NULL, &defaultTask_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  giveTaskHandle = osThreadNew(StartGiveTask, NULL, &giveTask_attributes);
+  takeTaskHandle = osThreadNew(StartTakeTask, NULL, &takeTask_attributes);
   /* USER CODE END RTOS_THREADS */
 
   /* USER CODE BEGIN RTOS_EVENTS */
@@ -239,7 +258,26 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+void StartGiveTask(void *argument)
+{
+  for(;;)
+  {
+    osDelay(1000);
+    uart_print("giveTask: release semaphore\r\n");
+    osSemaphoreRelease(binSemHandle);
+  }
+}
 
+void StartTakeTask(void *argument)
+{
+  for(;;)
+  {
+    if (osSemaphoreAcquire(binSemHandle, osWaitForever) == osOK)
+    {
+      uart_print("takeTask: acquire OK, xu ly su kien\r\n");
+    }
+  }
+}
 /* USER CODE END 4 */
 
 /* USER CODE BEGIN Header_StartDefaultTask */
@@ -252,6 +290,21 @@ static void MX_GPIO_Init(void)
 void StartDefaultTask(void *argument)
 {
   /* USER CODE BEGIN 5 */
+  /* Counting semaphore: 4 xe vao bai do chi co 3 cho */
+  char msg[] = "Xe 0: ";
+  for (int i = 1; i <= 4; i++)
+  {
+    msg[3] = '0' + i;
+    uart_print(msg);
+    if (osSemaphoreAcquire(countSemHandle, 0) == osOK)
+    {
+      uart_print("vao bai do xe\r\n");
+    }
+    else
+    {
+      uart_print("het cho, quay ve\r\n");
+    }
+  }
   /* Infinite loop */
   for(;;)
   {
